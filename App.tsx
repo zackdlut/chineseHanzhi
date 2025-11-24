@@ -4,13 +4,14 @@ import { getPinyinForText, generateGrade1Content } from './services/geminiServic
 import { Worksheet } from './components/Worksheet';
 import { HanziWriterPlayer } from './components/HanziWriterPlayer';
 import { CharacterData, SheetSettings, GridType, PracticeMode, DifficultyLevel, PRESETS } from './types';
-import { Printer, Settings, Wand2, BookOpen, MonitorPlay, Sparkles, ToggleRight, Layers, CheckSquare } from 'lucide-react';
+import { Printer, Settings, Wand2, BookOpen, MonitorPlay, Sparkles, ToggleRight, Layers, CheckSquare, FileDown, Loader2 } from 'lucide-react';
 
 const App: React.FC = () => {
   // State
   const [inputText, setInputText] = useState<string>('你好世界');
   const [charData, setCharData] = useState<CharacterData[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState<boolean>(false);
   
   // App View Mode
   const [activeTab, setActiveTab] = useState<'print' | 'interactive'>('print');
@@ -131,6 +132,38 @@ const App: React.FC = () => {
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleDownloadPDF = async () => {
+    const element = document.getElementById('worksheet-container');
+    if (!element) return;
+    
+    setIsGeneratingPdf(true);
+    element.classList.add('generating-pdf');
+
+    const opt = {
+      margin: 0,
+      filename: `${settings.title || '字帖'}.pdf`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true, letterRendering: true },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
+
+    try {
+        // @ts-ignore - html2pdf loaded via script tag
+        if (window.html2pdf) {
+            // @ts-ignore
+            await window.html2pdf().set(opt).from(element).save();
+        } else {
+            alert("PDF生成插件加载失败，请刷新重试。");
+        }
+    } catch (e) {
+        console.error("PDF Generation failed", e);
+        alert("PDF生成失败，建议使用打印按钮并选择'另存为PDF'");
+    } finally {
+        element.classList.remove('generating-pdf');
+        setIsGeneratingPdf(false);
+    }
   };
 
   return (
@@ -388,14 +421,22 @@ const App: React.FC = () => {
         </div>
 
         {activeTab === 'print' && (
-            <div className="mt-auto pt-6">
-            <button 
-                onClick={handlePrint}
-                className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition transform active:scale-95"
-            >
-                <Printer size={20} />
-                打印字帖
-            </button>
+            <div className="mt-auto pt-6 space-y-3">
+              <button 
+                  onClick={handlePrint}
+                  className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition transform active:scale-95"
+              >
+                  <Printer size={20} />
+                  打印字帖
+              </button>
+              <button 
+                  onClick={handleDownloadPDF}
+                  disabled={isGeneratingPdf}
+                  className="w-full bg-slate-800 hover:bg-slate-900 disabled:bg-slate-400 text-white font-bold py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 shadow transition"
+              >
+                  {isGeneratingPdf ? <Loader2 size={18} className="animate-spin" /> : <FileDown size={18} />}
+                  {isGeneratingPdf ? '生成PDF中...' : '下载为 PDF'}
+              </button>
             </div>
         )}
       </aside>

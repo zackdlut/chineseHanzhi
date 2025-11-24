@@ -34,7 +34,7 @@ export const Worksheet: React.FC<WorksheetProps> = ({ data, settings }) => {
   const pages: CharacterData[][] = data.length > 0 ? chunkArray(data, ROWS_PER_PAGE) : [[]];
 
   return (
-    <div className="w-full flex flex-col items-center gap-8 print:block print:gap-0">
+    <div id="worksheet-container" className="w-full flex flex-col items-center gap-8 print:block print:gap-0">
       {pages.map((pageData, pageIndex) => (
         <div 
           key={pageIndex}
