@@ -1,0 +1,5 @@
+{
+  "name": "Grade 1 Calligraphy Generator",
+  "description": "A smart Chinese character handwriting practice sheet generator. It uses Gemini to automatically generate Pinyin and suggest age-appropriate vocabulary for Grade 1 students, formatting them into printable Tian Zi Ge or Mi Zi Ge grids.",
+  "requestFramePermissions": []
+}
