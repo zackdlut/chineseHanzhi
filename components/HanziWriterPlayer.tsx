@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 // @ts-ignore - Importing from CDN via importmap
 import HanziWriter from 'hanzi-writer';
-import { Play, RotateCcw, PenTool, CheckCircle, XCircle } from 'lucide-react';
+import { Play, PenTool, CheckCircle, XCircle, MessageCircleHeart, Loader2 } from 'lucide-react';
+import { generateHandwritingFeedback } from '../services/geminiService';
 
 interface HanziWriterPlayerProps {
   char: string;
@@ -14,6 +15,7 @@ export const HanziWriterPlayer: React.FC<HanziWriterPlayerProps> = ({ char, grid
   const [mode, setMode] = useState<'demo' | 'quiz'>('demo');
   const [feedback, setFeedback] = useState<string>('');
   const [score, setScore] = useState<number | null>(null);
+  const [isEvaluating, setIsEvaluating] = useState<boolean>(false);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -22,6 +24,7 @@ export const HanziWriterPlayer: React.FC<HanziWriterPlayerProps> = ({ char, grid
     containerRef.current.innerHTML = '';
     setFeedback('');
     setScore(null);
+    setIsEvaluating(false);
 
     const writer = HanziWriter.create(containerRef.current, char, {
       width: 260,
@@ -54,6 +57,7 @@ export const HanziWriterPlayer: React.FC<HanziWriterPlayerProps> = ({ char, grid
     setMode('demo');
     setFeedback('');
     setScore(null);
+    setIsEvaluating(false);
     writerRef.current.showCharacter();
     writerRef.current.showOutline();
     writerRef.current.animateCharacter();
@@ -62,8 +66,9 @@ export const HanziWriterPlayer: React.FC<HanziWriterPlayerProps> = ({ char, grid
   const handleQuiz = () => {
     if (!writerRef.current) return;
     setMode('quiz');
-    setFeedback('请开始描红...');
+    setFeedback('请拿起“笔”开始描红吧...');
     setScore(null);
+    setIsEvaluating(false);
     
     // Hide the main character guide for quiz mode
     writerRef.current.hideCharacter();
@@ -71,29 +76,50 @@ export const HanziWriterPlayer: React.FC<HanziWriterPlayerProps> = ({ char, grid
 
     writerRef.current.quiz({
       onMistake: function(strokeData: any) {
-        setFeedback('笔顺错误或出格了，再试一次！');
+        // Real-time simple feedback
+        // We don't update main feedback state here to avoid distracting the user too much
       },
       onCorrectStroke: function(strokeData: any) {
-        setFeedback('很棒！继续下一笔。');
+        // Optional: play sound or subtle visual cue
       },
-      onComplete: function(summaryData: any) {
-        setFeedback('完成！');
-        // Simple scoring based on total mistakes
+      onComplete: async function(summaryData: any) {
         const mistakes = summaryData.totalMistakes;
-        const finalScore = Math.max(0, 100 - (mistakes * 10));
+        
+        // Calculate score (simple algorithm)
+        const finalScore = Math.max(0, 100 - (mistakes * 5));
         setScore(finalScore);
+
+        // Start Detailed Evaluation
+        setFeedback(''); // Clear prompt
+        setIsEvaluating(true);
+        
+        // Extract mistake data
+        // summaryData.mistakesOnStroke is an object: { strokeIndex: count }
+        const mistakesOnStroke = summaryData.mistakesOnStroke || {};
+        const missedIndices = Object.keys(mistakesOnStroke)
+            .map(Number)
+            .filter(i => mistakesOnStroke[i] > 0);
+
+        try {
+            const detailedComment = await generateHandwritingFeedback(char, mistakes, missedIndices);
+            setFeedback(detailedComment);
+        } catch (e) {
+            setFeedback(mistakes === 0 ? "写得真棒！笔画非常流畅。" : "继续加油，注意笔顺哦！");
+        } finally {
+            setIsEvaluating(false);
+        }
       }
     });
   };
 
   return (
-    <div className="flex flex-col items-center bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+    <div className="flex flex-col items-center bg-white p-6 rounded-2xl shadow-sm border border-slate-100 max-w-md w-full">
       <div className="flex justify-between w-full items-center mb-4">
         <h3 className="text-2xl font-kaiti font-bold text-slate-800">
             汉字演示: <span className="text-red-600 text-3xl">{char}</span>
         </h3>
         {score !== null && (
-            <div className={`flex items-center gap-1 font-bold ${score > 80 ? 'text-green-600' : 'text-orange-500'}`}>
+            <div className={`flex items-center gap-1 font-bold animate-pulse ${score > 80 ? 'text-green-600' : 'text-orange-500'}`}>
                 {score > 80 ? <CheckCircle size={20} /> : <XCircle size={20} />}
                 {score}分
             </div>
@@ -118,32 +144,43 @@ export const HanziWriterPlayer: React.FC<HanziWriterPlayerProps> = ({ char, grid
         <div ref={containerRef} className="hanzi-target" />
       </div>
 
-      <div className="w-full text-center h-8 mb-2 font-medium text-slate-600">
-         {feedback}
+      {/* Feedback Section */}
+      <div className="w-full min-h-[4rem] mb-4 bg-yellow-50 rounded-xl p-3 border border-yellow-100 flex items-start gap-3">
+         <div className="mt-0.5 text-yellow-600">
+             {isEvaluating ? <Loader2 size={20} className="animate-spin" /> : <MessageCircleHeart size={20} />}
+         </div>
+         <div className="flex-1">
+             <h4 className="text-xs font-bold text-yellow-700 uppercase mb-0.5">老师点评</h4>
+             <p className="text-sm text-slate-700 font-medium leading-relaxed">
+                 {isEvaluating ? "老师正在仔细看你的字..." : (feedback || (mode === 'quiz' ? "加油！认真写好每一笔。" : "点击“演示笔顺”观看动画"))}
+             </p>
+         </div>
       </div>
 
       <div className="flex gap-4 w-full">
         <button
           onClick={handleAnimate}
-          className={`flex-1 py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition ${
+          disabled={isEvaluating}
+          className={`flex-1 py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition font-semibold text-sm ${
              mode === 'demo' 
-             ? 'bg-slate-800 text-white shadow-md' 
-             : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-50'
+             ? 'bg-slate-800 text-white shadow-lg ring-2 ring-slate-800 ring-offset-2' 
+             : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
           }`}
         >
-          <Play size={18} />
-          演示笔顺
+          <Play size={18} fill="currentColor" />
+          演示
         </button>
         <button
           onClick={handleQuiz}
-          className={`flex-1 py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition ${
+          disabled={isEvaluating}
+          className={`flex-1 py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition font-semibold text-sm ${
              mode === 'quiz' 
-             ? 'bg-red-600 text-white shadow-md' 
-             : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-50'
+             ? 'bg-red-500 text-white shadow-lg ring-2 ring-red-500 ring-offset-2' 
+             : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
           }`}
         >
           <PenTool size={18} />
-          描红练习
+          描红
         </button>
       </div>
     </div>
