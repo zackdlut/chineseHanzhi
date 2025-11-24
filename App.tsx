@@ -3,8 +3,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { getPinyinForText, generateGrade1Content } from './services/geminiService';
 import { Worksheet } from './components/Worksheet';
 import { HanziWriterPlayer } from './components/HanziWriterPlayer';
-import { CharacterData, SheetSettings, GridType, PracticeMode, DifficultyLevel, PRESETS } from './types';
-import { Printer, Settings, Wand2, BookOpen, MonitorPlay, Sparkles, ToggleRight, Layers, CheckSquare, FileDown, Loader2 } from 'lucide-react';
+import { CharacterData, SheetSettings, GridType, PracticeMode, DifficultyLevel, PRESETS, ContentPreset } from './types';
+import { Printer, Settings, Wand2, BookOpen, MonitorPlay, Sparkles, ToggleRight, Layers, CheckSquare, FileDown, Loader2, Save, Trash2, Plus } from 'lucide-react';
 
 const App: React.FC = () => {
   // State
@@ -22,6 +22,10 @@ const App: React.FC = () => {
   const [selectedPresetId, setSelectedPresetId] = useState<string>('custom');
   const [difficulty, setDifficulty] = useState<DifficultyLevel>(DifficultyLevel.Any);
 
+  // User Presets
+  const [userPresets, setUserPresets] = useState<ContentPreset[]>([]);
+  const [savePresetName, setSavePresetName] = useState<string>('');
+
   // Multi-select state
   const [selectedTextbookIds, setSelectedTextbookIds] = useState<Set<string>>(new Set());
 
@@ -33,6 +37,18 @@ const App: React.FC = () => {
     mode: PracticeMode.Trace,
     showPinyinGrid: true, // Default to true
   });
+
+  // Load User Presets on Mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('grade1_user_presets');
+      if (saved) {
+        setUserPresets(JSON.parse(saved));
+      }
+    } catch (e) {
+      console.error("Failed to load user presets", e);
+    }
+  }, []);
 
   const processText = useCallback(async (text: string) => {
     if (!text) {
@@ -65,13 +81,29 @@ const App: React.FC = () => {
         return;
     }
 
-    const preset = PRESETS.find(p => p.id === presetId);
+    // Check Static Presets
+    let preset = PRESETS.find(p => p.id === presetId);
+    
+    // Check User Presets if not found
+    if (!preset) {
+        preset = userPresets.find(p => p.id === presetId);
+    }
+
     if (preset) {
-        setLoading(true);
-        const text = await generateGrade1Content(preset.promptContext, difficulty);
-        setInputText(text);
-        await processText(text);
-        setLoading(false);
+        if (preset.category === 'user') {
+            // User presets store raw text in promptContext
+            setInputText(preset.promptContext);
+            await processText(preset.promptContext);
+            setSettings(prev => ({ ...prev, title: preset!.name }));
+        } else {
+            // Standard presets use AI generation
+            setLoading(true);
+            const text = await generateGrade1Content(preset.promptContext, difficulty);
+            setInputText(text);
+            await processText(text);
+            setLoading(false);
+            setSettings(prev => ({ ...prev, title: preset!.name }));
+        }
     }
   };
 
@@ -99,12 +131,13 @@ const App: React.FC = () => {
     setDifficulty(level);
     
     if (selectedPresetId === 'multi_textbook' && selectedTextbookIds.size > 0) {
-        // Optional: Auto-regenerate multi selection on difficulty change? 
-        // Let's require manual click to avoid accidental heavy API calls
         return;
     }
 
-    if (selectedPresetId !== 'custom' && selectedPresetId !== 'multi_textbook') {
+    // Check if current preset is AI-generated (standard preset)
+    const isStandardPreset = PRESETS.some(p => p.id === selectedPresetId && p.id !== 'custom');
+
+    if (isStandardPreset) {
         const preset = PRESETS.find(p => p.id === selectedPresetId);
         if (preset) {
             setLoading(true);
@@ -112,6 +145,47 @@ const App: React.FC = () => {
             setInputText(text);
             await processText(text);
             setLoading(false);
+        }
+    }
+  };
+
+  // Save Custom Preset
+  const handleSavePreset = () => {
+    if (!inputText.trim()) {
+        alert("请先输入一些内容！");
+        return;
+    }
+    if (!savePresetName.trim()) {
+        alert("请给这个预设起个名字！");
+        return;
+    }
+
+    const newPreset: ContentPreset = {
+        id: `user_${Date.now()}`,
+        name: savePresetName,
+        promptContext: inputText, // Storing raw text here
+        category: 'user'
+    };
+
+    const updatedPresets = [...userPresets, newPreset];
+    setUserPresets(updatedPresets);
+    localStorage.setItem('grade1_user_presets', JSON.stringify(updatedPresets));
+    
+    // Select the new preset
+    setSelectedPresetId(newPreset.id);
+    setSavePresetName('');
+  };
+
+  // Delete User Preset
+  const handleDeletePreset = (id: string) => {
+    if (confirm("确定要删除这个收藏吗？")) {
+        const updatedPresets = userPresets.filter(p => p.id !== id);
+        setUserPresets(updatedPresets);
+        localStorage.setItem('grade1_user_presets', JSON.stringify(updatedPresets));
+        
+        if (selectedPresetId === id) {
+            setSelectedPresetId('custom');
+            setInputText('');
         }
     }
   };
@@ -218,15 +292,40 @@ const App: React.FC = () => {
                 <optgroup label="自由输入">
                     {PRESETS.filter(p => p.id === 'custom').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </optgroup>
+                
+                {userPresets.length > 0 && (
+                    <optgroup label="我的收藏">
+                        {userPresets.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </optgroup>
+                )}
+
                 <optgroup label="教材同步">
                     {PRESETS.filter(p => p.category === 'textbook').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                     <option value="multi_textbook">📚 组合选择多个单元...</option>
                 </optgroup>
+                <optgroup label="经典诵读">
+                    {PRESETS.filter(p => p.category === 'literature').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </optgroup>
+                <optgroup label="字形结构">
+                    {PRESETS.filter(p => p.category === 'structure').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </optgroup>
                 <optgroup label="趣味分类">
-                    {PRESETS.filter(p => p.category !== 'textbook' && p.id !== 'custom').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    {PRESETS.filter(p => p.category === 'fun' && p.id !== 'custom').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </optgroup>
             </select>
           </div>
+          
+          {/* User Preset Delete Button (Only when a user preset is selected) */}
+          {userPresets.some(p => p.id === selectedPresetId) && (
+             <div className="flex justify-end">
+                <button 
+                  onClick={() => handleDeletePreset(selectedPresetId)}
+                  className="text-xs text-red-500 flex items-center gap-1 hover:text-red-700 transition"
+                >
+                    <Trash2 size={12} /> 删除此收藏
+                </button>
+             </div>
+          )}
           
           {/* Multi-Select UI */}
           {selectedPresetId === 'multi_textbook' && (
@@ -272,8 +371,8 @@ const App: React.FC = () => {
              <select
                 value={difficulty}
                 onChange={(e) => handleDifficultyChange(e.target.value as DifficultyLevel)}
-                disabled={loading}
-                className="w-full p-2 border border-slate-300 rounded-lg text-sm bg-white"
+                disabled={loading || userPresets.some(p => p.id === selectedPresetId)}
+                className="w-full p-2 border border-slate-300 rounded-lg text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
              >
                 <option value={DifficultyLevel.Any}>混合难度 (默认)</option>
                 <option value={DifficultyLevel.Simple}>简单 (5画以内)</option>
@@ -283,12 +382,15 @@ const App: React.FC = () => {
              </select>
           </div>
 
-          {/* Custom Input */}
-          {selectedPresetId === 'custom' && (
-            <div className="space-y-2">
-                <label className="text-xs text-slate-500 block">自定义内容</label>
+          {/* Custom Input / Edit Area */}
+          {(selectedPresetId === 'custom' || userPresets.some(p => p.id === selectedPresetId)) && (
+            <div className="space-y-2 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
+                    <span>{selectedPresetId === 'custom' ? '自由输入内容' : '编辑内容'}</span>
+                    {selectedPresetId !== 'custom' && <span className="text-[10px] text-blue-500 font-normal">已收藏</span>}
+                </label>
                 <textarea
-                    className="w-full h-24 p-2 text-lg border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-400 outline-none resize-none font-kaiti"
+                    className="w-full h-24 p-2 text-lg border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-400 outline-none resize-none font-kaiti bg-white"
                     placeholder="输入汉字..."
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
@@ -298,18 +400,40 @@ const App: React.FC = () => {
                     <button 
                         onClick={() => processText(inputText)}
                         disabled={loading}
-                        className="flex-1 bg-slate-800 text-white py-1.5 rounded hover:bg-slate-700 transition text-sm"
+                        className="flex-1 bg-slate-800 text-white py-1.5 rounded hover:bg-slate-700 transition text-sm shadow-sm"
                     >
-                        {loading ? '生成中...' : '更新'}
+                        {loading ? '生成中...' : '立即更新预览'}
                     </button>
-                    <button 
-                        onClick={handleSmartGenerate}
-                        disabled={loading}
-                        className="px-3 bg-purple-100 text-purple-700 rounded hover:bg-purple-200"
-                        title="AI 帮我想几个字"
-                    >
-                        <Sparkles size={16} />
-                    </button>
+                    {selectedPresetId === 'custom' && (
+                        <button 
+                            onClick={handleSmartGenerate}
+                            disabled={loading}
+                            className="px-3 bg-purple-100 text-purple-700 rounded hover:bg-purple-200 border border-purple-200 shadow-sm"
+                            title="AI 帮我想几个字"
+                        >
+                            <Sparkles size={16} />
+                        </button>
+                    )}
+                </div>
+                
+                {/* Save as New Preset Section */}
+                <div className="pt-2 mt-2 border-t border-slate-200">
+                    <div className="flex gap-2 items-center">
+                        <input 
+                            type="text" 
+                            value={savePresetName}
+                            onChange={(e) => setSavePresetName(e.target.value)}
+                            placeholder="给这组生字起个名字..."
+                            className="flex-1 text-xs px-2 py-1.5 border border-slate-300 rounded bg-white"
+                        />
+                        <button 
+                            onClick={handleSavePreset}
+                            className="bg-green-600 hover:bg-green-700 text-white p-1.5 rounded transition"
+                            title="保存为预设"
+                        >
+                            <Save size={16} />
+                        </button>
+                    </div>
                 </div>
             </div>
           )}

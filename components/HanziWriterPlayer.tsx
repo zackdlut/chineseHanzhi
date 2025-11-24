@@ -1,13 +1,16 @@
+
 import React, { useEffect, useRef, useState } from 'react';
 // @ts-ignore - Importing from CDN via importmap
 import HanziWriter from 'hanzi-writer';
-import { Play, PenTool, CheckCircle, XCircle, MessageCircleHeart, Loader2 } from 'lucide-react';
+import { Play, PenTool, CheckCircle, XCircle, MessageCircleHeart, Loader2, Palette } from 'lucide-react';
 import { generateHandwritingFeedback } from '../services/geminiService';
 
 interface HanziWriterPlayerProps {
   char: string;
   gridColor: string;
 }
+
+const RAINBOW_COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#a855f7', '#ec4899'];
 
 export const HanziWriterPlayer: React.FC<HanziWriterPlayerProps> = ({ char, gridColor }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -16,6 +19,8 @@ export const HanziWriterPlayer: React.FC<HanziWriterPlayerProps> = ({ char, grid
   const [feedback, setFeedback] = useState<string>('');
   const [score, setScore] = useState<number | null>(null);
   const [isEvaluating, setIsEvaluating] = useState<boolean>(false);
+  const [strokeCount, setStrokeCount] = useState<number>(0);
+  const [isRainbow, setIsRainbow] = useState<boolean>(true);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -40,6 +45,9 @@ export const HanziWriterPlayer: React.FC<HanziWriterPlayerProps> = ({ char, grid
       showCharacter: true,
       showHintAfterMisses: 3,
       highlightOnComplete: true,
+      onLoadCharDataSuccess: (data: any) => {
+        setStrokeCount(data.strokes.length);
+      }
     });
 
     writerRef.current = writer;
@@ -52,15 +60,41 @@ export const HanziWriterPlayer: React.FC<HanziWriterPlayerProps> = ({ char, grid
     };
   }, [char]);
 
-  const handleAnimate = () => {
+  const handleAnimate = async () => {
     if (!writerRef.current) return;
+    const writer = writerRef.current;
+    
     setMode('demo');
     setFeedback('');
     setScore(null);
     setIsEvaluating(false);
-    writerRef.current.showCharacter();
-    writerRef.current.showOutline();
-    writerRef.current.animateCharacter();
+
+    if (isRainbow && strokeCount > 0) {
+        // Rainbow Mode: Manual stroke-by-stroke animation with color updates
+        writer.hideCharacter();
+        writer.showOutline();
+        
+        for (let i = 0; i < strokeCount; i++) {
+            // "Chameleon Effect": Update the global ink color for each stroke.
+            // This changes previously drawn strokes too, creating a fun dynamic color shift.
+            const color = RAINBOW_COLORS[i % RAINBOW_COLORS.length];
+            writer.updateColor('strokeColor', color);
+            
+            // Animate specific stroke and wait for it
+            await writer.animateStroke(i);
+        }
+        
+        // Optional: Reset to standard color at the end? 
+        // Let's keep the last color as it looks cool, or reset to black after a delay.
+        // writer.updateColor('strokeColor', '#333333');
+        
+    } else {
+        // Standard Mode
+        writer.updateColor('strokeColor', '#333333');
+        writer.showCharacter();
+        writer.showOutline();
+        writer.animateCharacter();
+    }
   };
 
   const handleQuiz = () => {
@@ -69,6 +103,9 @@ export const HanziWriterPlayer: React.FC<HanziWriterPlayerProps> = ({ char, grid
     setFeedback('请拿起“笔”开始描红吧...');
     setScore(null);
     setIsEvaluating(false);
+    
+    // Ensure color is standard for quiz
+    writerRef.current.updateColor('strokeColor', '#333333');
     
     // Hide the main character guide for quiz mode
     writerRef.current.hideCharacter();
@@ -156,32 +193,47 @@ export const HanziWriterPlayer: React.FC<HanziWriterPlayerProps> = ({ char, grid
              </p>
          </div>
       </div>
+      
+      {/* Controls */}
+      <div className="w-full space-y-3">
+        {/* Rainbow Toggle */}
+        <div className="flex justify-end">
+            <button 
+                onClick={() => setIsRainbow(!isRainbow)}
+                className={`text-xs flex items-center gap-1.5 px-2 py-1 rounded-full transition-colors ${isRainbow ? 'bg-purple-100 text-purple-700' : 'text-slate-400 hover:bg-slate-100'}`}
+                title="开启彩虹笔顺演示"
+            >
+                <Palette size={14} />
+                {isRainbow ? '彩虹笔顺: 开启' : '彩虹笔顺: 关闭'}
+            </button>
+        </div>
 
-      <div className="flex gap-4 w-full">
-        <button
-          onClick={handleAnimate}
-          disabled={isEvaluating}
-          className={`flex-1 py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition font-semibold text-sm ${
-             mode === 'demo' 
-             ? 'bg-slate-800 text-white shadow-lg ring-2 ring-slate-800 ring-offset-2' 
-             : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <Play size={18} fill="currentColor" />
-          演示
-        </button>
-        <button
-          onClick={handleQuiz}
-          disabled={isEvaluating}
-          className={`flex-1 py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition font-semibold text-sm ${
-             mode === 'quiz' 
-             ? 'bg-red-500 text-white shadow-lg ring-2 ring-red-500 ring-offset-2' 
-             : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <PenTool size={18} />
-          描红
-        </button>
+        <div className="flex gap-4 w-full">
+            <button
+            onClick={handleAnimate}
+            disabled={isEvaluating}
+            className={`flex-1 py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition font-semibold text-sm ${
+                mode === 'demo' 
+                ? 'bg-slate-800 text-white shadow-lg ring-2 ring-slate-800 ring-offset-2' 
+                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+            }`}
+            >
+            <Play size={18} fill="currentColor" />
+            演示
+            </button>
+            <button
+            onClick={handleQuiz}
+            disabled={isEvaluating}
+            className={`flex-1 py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition font-semibold text-sm ${
+                mode === 'quiz' 
+                ? 'bg-red-500 text-white shadow-lg ring-2 ring-red-500 ring-offset-2' 
+                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+            }`}
+            >
+            <PenTool size={18} />
+            描红
+            </button>
+        </div>
       </div>
     </div>
   );
