@@ -1,3 +1,4 @@
+
 export interface CharacterData {
   char: string;
   pinyin: string;
@@ -21,6 +22,7 @@ export interface SheetSettings {
   charColor: string;
   title: string;
   mode: PracticeMode;
+  showPinyinGrid: boolean; // New setting for Pinyin lines
 }
 
 export enum DifficultyLevel {
@@ -42,6 +44,8 @@ export const PRESETS: ContentPreset[] = [
   { id: 'custom', name: '自定义输入', promptContext: '', category: 'fun' },
   { id: 'ren_jiao_1_1', name: '人教版一年级上册 (第一单元)', promptContext: 'Create a list of characters from the People\'s Education Press (RenJiao) Grade 1 Book 1, Unit 1.', category: 'textbook' },
   { id: 'ren_jiao_1_2', name: '人教版一年级上册 (第二单元)', promptContext: 'Create a list of characters from the People\'s Education Press (RenJiao) Grade 1 Book 1, Unit 2.', category: 'textbook' },
+  { id: 'ren_jiao_1_3', name: '人教版一年级上册 (第三单元)', promptContext: 'Create a list of characters from the People\'s Education Press (RenJiao) Grade 1 Book 1, Unit 3.', category: 'textbook' },
+  { id: 'ren_jiao_1_4', name: '人教版一年级上册 (第四单元)', promptContext: 'Create a list of characters from the People\'s Education Press (RenJiao) Grade 1 Book 1, Unit 4.', category: 'textbook' },
   { id: 'radicals_basic', name: '基础偏旁部首', promptContext: 'List common Chinese radicals (Bu Shou) suitable for beginners.', category: 'structure' },
   { id: 'measure_words', name: '常用量词 (Common Measure Words)', promptContext: 'List common Chinese measure words suitable for Grade 1 students.', category: 'structure' },
   { id: 'nature', name: '大自然 (日月水火)', promptContext: 'List simple characters related to nature, elements, and weather.', category: 'fun' },

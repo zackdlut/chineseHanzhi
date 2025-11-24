@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { CharacterData, SheetSettings, PracticeMode } from '../types';
 import { GridCell } from './GridCell';
@@ -9,21 +10,16 @@ interface WorksheetProps {
 
 export const Worksheet: React.FC<WorksheetProps> = ({ data, settings }) => {
   // A4 paper logic
-  // A standard A4 is roughly 210mm x 297mm. 
-  // We use a fixed width container to simulate A4.
-  
   // Grid size is 80px. 
-  // Height calculation:
-  // Top/Bottom Padding: 15mm * 2 = 30mm
-  // Header: ~35mm
-  // Row Height: 80px (box) + 24px (pinyin) + 16px (gap) = ~120px = ~32mm
-  // Available height for rows: 297 - 30 - 35 = 232mm
-  // Rows: 232 / 32 = ~7.25
-  // We'll set safe limit to 7 or 8 rows per page depending on exact layout.
-  // Let's use 8 rows per page and ensure margins are tight enough.
+  // Height calculation with Pinyin Grid (h-10 = 40px):
+  // Row Height: 80px (box) + 40px (pinyin) + 16px (gap) = ~136px
+  // Available height for rows: ~232mm
+  // 136px is approx 36mm.
+  // 232 / 36 = ~6.4.
+  // We reduce rows per page to 6 to fit the new Pinyin grid comfortably.
   
   const COLUMNS = 8;
-  const ROWS_PER_PAGE = 7; 
+  const ROWS_PER_PAGE = 6; 
 
   // Helper to chunk data
   const chunkArray = <T,>(array: T[], size: number): T[][] => {
@@ -53,7 +49,7 @@ export const Worksheet: React.FC<WorksheetProps> = ({ data, settings }) => {
           }}
         >
           
-          {/* Title Header (Repeated on each page or just first? Usually repeated for worksheets) */}
+          {/* Title Header */}
           <div className="text-center border-b-2 border-slate-800 pb-4 mb-6">
             <h1 className="text-3xl font-kaiti font-bold tracking-widest text-slate-900">
               {settings.title || "一年级语文生字练习"}
@@ -67,7 +63,7 @@ export const Worksheet: React.FC<WorksheetProps> = ({ data, settings }) => {
           </div>
 
           {/* Grid Rows */}
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-6">
             {pageData.length === 0 && pageIndex === 0 && (
                <div className="text-center text-gray-300 py-20 font-kaiti text-xl border-2 border-dashed border-gray-200 rounded-xl m-8">
                  在此处预览字帖内容... <br/>
@@ -99,6 +95,7 @@ export const Worksheet: React.FC<WorksheetProps> = ({ data, settings }) => {
                        charColor={settings.charColor}
                        mode={cellMode}
                        isHeader={isHeader}
+                       showPinyinGrid={settings.showPinyinGrid}
                      />
                    );
                  })}

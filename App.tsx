@@ -1,9 +1,10 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { getPinyinForText, generateGrade1Content } from './services/geminiService';
 import { Worksheet } from './components/Worksheet';
 import { HanziWriterPlayer } from './components/HanziWriterPlayer';
 import { CharacterData, SheetSettings, GridType, PracticeMode, DifficultyLevel, PRESETS } from './types';
-import { Printer, Settings, Wand2, Type, Eraser, BookOpen, MonitorPlay, Sparkles } from 'lucide-react';
+import { Printer, Settings, Wand2, BookOpen, MonitorPlay, Sparkles, ToggleRight, Layers, CheckSquare } from 'lucide-react';
 
 const App: React.FC = () => {
   // State
@@ -20,12 +21,16 @@ const App: React.FC = () => {
   const [selectedPresetId, setSelectedPresetId] = useState<string>('custom');
   const [difficulty, setDifficulty] = useState<DifficultyLevel>(DifficultyLevel.Any);
 
+  // Multi-select state
+  const [selectedTextbookIds, setSelectedTextbookIds] = useState<Set<string>>(new Set());
+
   const [settings, setSettings] = useState<SheetSettings>({
     gridType: GridType.MiZiGe,
     gridColor: '#ef4444', // red-500
     charColor: '#1f2937', // gray-800
     title: '一年级语文生字练习',
     mode: PracticeMode.Trace,
+    showPinyinGrid: true, // Default to true
   });
 
   const processText = useCallback(async (text: string) => {
@@ -48,6 +53,12 @@ const App: React.FC = () => {
   // Handle Preset Change
   const handlePresetChange = async (presetId: string) => {
     setSelectedPresetId(presetId);
+    
+    // If multi-textbook mode is selected, don't generate immediately
+    if (presetId === 'multi_textbook') {
+        return;
+    }
+
     if (presetId === 'custom') {
         setInputText('');
         return;
@@ -63,11 +74,36 @@ const App: React.FC = () => {
     }
   };
 
+  const handleMultiGenerate = async () => {
+    if (selectedTextbookIds.size === 0) return;
+    
+    setLoading(true);
+    const selectedPresets = PRESETS.filter(p => selectedTextbookIds.has(p.id));
+    
+    // Construct a composite prompt
+    const promptParts = selectedPresets.map(p => p.promptContext);
+    const unitNames = selectedPresets.map(p => p.name).join(", ");
+    
+    // We override the default "list of 10-15" constraint by providing a specific comprehensive prompt
+    const combinedContext = `Generate a comprehensive vocabulary list (20-30 characters) that covers content from the following Grade 1 textbook units: ${unitNames}. Contexts: ${promptParts.join(" ")}. Ensure the list is merged and duplicates are removed.`;
+    
+    const text = await generateGrade1Content(combinedContext, difficulty);
+    setInputText(text);
+    await processText(text);
+    setLoading(false);
+  };
+
   // Handle Difficulty Change (Regenerate if not custom)
   const handleDifficultyChange = async (level: DifficultyLevel) => {
     setDifficulty(level);
-    if (selectedPresetId !== 'custom') {
-        // Debounce or immediate? Let's do immediate for responsiveness but carefully
+    
+    if (selectedPresetId === 'multi_textbook' && selectedTextbookIds.size > 0) {
+        // Optional: Auto-regenerate multi selection on difficulty change? 
+        // Let's require manual click to avoid accidental heavy API calls
+        return;
+    }
+
+    if (selectedPresetId !== 'custom' && selectedPresetId !== 'multi_textbook') {
         const preset = PRESETS.find(p => p.id === selectedPresetId);
         if (preset) {
             setLoading(true);
@@ -87,7 +123,6 @@ const App: React.FC = () => {
 
   const handleSmartGenerate = async () => {
     setLoading(true);
-    // Even in custom mode, we use a generic prompt with the difficulty
     const text = await generateGrade1Content("Generate random interesting words", difficulty);
     setInputText(text);
     await processText(text);
@@ -152,12 +187,51 @@ const App: React.FC = () => {
                 </optgroup>
                 <optgroup label="教材同步">
                     {PRESETS.filter(p => p.category === 'textbook').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    <option value="multi_textbook">📚 组合选择多个单元...</option>
                 </optgroup>
                 <optgroup label="趣味分类">
                     {PRESETS.filter(p => p.category !== 'textbook' && p.id !== 'custom').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </optgroup>
             </select>
           </div>
+          
+          {/* Multi-Select UI */}
+          {selectedPresetId === 'multi_textbook' && (
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 animate-in fade-in slide-in-from-top-2">
+                <div className="flex items-center gap-2 mb-2 text-xs font-bold text-slate-500">
+                    <Layers size={14} />
+                    勾选需要合并的单元:
+                </div>
+                <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1 custom-scrollbar">
+                    {PRESETS.filter(p => p.category === 'textbook').map(p => (
+                        <label key={p.id} className="flex items-start gap-2 text-sm cursor-pointer hover:bg-white p-1.5 rounded transition-colors group">
+                            <input 
+                                type="checkbox"
+                                checked={selectedTextbookIds.has(p.id)}
+                                onChange={(e) => {
+                                    const newSet = new Set(selectedTextbookIds);
+                                    if (e.target.checked) newSet.add(p.id);
+                                    else newSet.delete(p.id);
+                                    setSelectedTextbookIds(newSet);
+                                }}
+                                className="mt-0.5 rounded border-slate-300 text-red-500 focus:ring-red-500"
+                            />
+                            <span className={`text-xs leading-tight ${selectedTextbookIds.has(p.id) ? 'text-slate-800 font-medium' : 'text-slate-500'}`}>
+                                {p.name}
+                            </span>
+                        </label>
+                    ))}
+                </div>
+                <button 
+                    onClick={handleMultiGenerate}
+                    disabled={selectedTextbookIds.size === 0 || loading}
+                    className="w-full mt-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white py-1.5 rounded text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
+                >
+                    <Sparkles size={12} />
+                    {loading ? '正在合并生成...' : `生成 (${selectedTextbookIds.size})`}
+                </button>
+            </div>
+          )}
 
           {/* Difficulty Selector */}
           <div>
@@ -217,39 +291,23 @@ const App: React.FC = () => {
              外观设置
           </div>
           
-          {/* Grid Type */}
-          <div className="grid grid-cols-3 gap-2">
-            {[
-                { id: GridType.MiZiGe, label: '米字格' },
-                { id: GridType.TianZiGe, label: '田字格' },
-                { id: GridType.Square, label: '方格' },
-            ].map(type => (
-                <button
-                key={type.id}
-                onClick={() => setSettings({...settings, gridType: type.id})}
-                className={`text-xs py-1.5 rounded border ${
-                    settings.gridType === type.id 
-                    ? 'bg-red-50 border-red-500 text-red-700 font-medium' 
-                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                }`}
-                >
-                {type.label}
-                </button>
-            ))}
-          </div>
-
           {activeTab === 'print' && (
              <>
-                 {/* Print Specific: Mode & Title */}
-                 <div>
-                    <label className="text-xs text-slate-500 block mb-1">字帖标题</label>
-                    <input 
-                    type="text" 
-                    value={settings.title}
-                    onChange={(e) => setSettings({...settings, title: e.target.value})}
-                    className="w-full px-2 py-1 border border-slate-300 rounded text-sm"
-                    />
+                {/* Print Specific: Mode & Title */}
+                <div className="flex items-center justify-between">
+                     <label className="text-sm font-medium text-slate-700">显示拼音四线格</label>
+                     <button
+                        onClick={() => setSettings(s => ({...s, showPinyinGrid: !s.showPinyinGrid}))}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
+                            settings.showPinyinGrid ? 'bg-red-500' : 'bg-slate-200'
+                        }`}
+                     >
+                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                            settings.showPinyinGrid ? 'translate-x-6' : 'translate-x-1'
+                        }`} />
+                     </button>
                 </div>
+                
                 <div>
                     <label className="text-xs text-slate-500 block mb-1">练习模式</label>
                     <div className="grid grid-cols-3 gap-2">
@@ -273,6 +331,42 @@ const App: React.FC = () => {
                     </div>
                 </div>
              </>
+          )}
+
+          {/* Grid Type */}
+          <div>
+            <label className="text-xs text-slate-500 block mb-1">格线类型</label>
+            <div className="grid grid-cols-3 gap-2">
+                {[
+                    { id: GridType.MiZiGe, label: '米字格' },
+                    { id: GridType.TianZiGe, label: '田字格' },
+                    { id: GridType.Square, label: '方格' },
+                ].map(type => (
+                    <button
+                    key={type.id}
+                    onClick={() => setSettings({...settings, gridType: type.id})}
+                    className={`text-xs py-1.5 rounded border ${
+                        settings.gridType === type.id 
+                        ? 'bg-red-50 border-red-500 text-red-700 font-medium' 
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                    >
+                    {type.label}
+                    </button>
+                ))}
+            </div>
+          </div>
+
+          {activeTab === 'print' && (
+              <div>
+                <label className="text-xs text-slate-500 block mb-1">字帖标题</label>
+                <input 
+                type="text" 
+                value={settings.title}
+                onChange={(e) => setSettings({...settings, title: e.target.value})}
+                className="w-full px-2 py-1 border border-slate-300 rounded text-sm"
+                />
+            </div>
           )}
 
            {/* Colors */}
